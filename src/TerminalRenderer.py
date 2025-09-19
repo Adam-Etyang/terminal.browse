@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 import re
-import rich
+from rich.console import Console
 
 
 class TerminalRenderer:
