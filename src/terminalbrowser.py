@@ -1,4 +1,4 @@
-# browser.py
+#!/usr/bin/env python3
 from html_parser import HTMLParser
 from TerminalRenderer import TerminalRenderer
 
@@ -38,38 +38,6 @@ class TerminalBrowser:
 if __name__ == "__main__":
     browser = TerminalBrowser(width=100)
 
-    # Test with sample HTML
-    sample_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Test Page</title>
-    </head>
-    <body>
-        <h1>Welcome to My Terminal Browser</h1>
-        <p>This is a <strong>test</strong> paragraph with <em>some formatting</em>.</p>
-        
-        <h2>Features</h2>
-        <ul>
-            <li>Basic HTML parsing</li>
-            <li>Text rendering</li>
-            <li>Link detection</li>
-        </ul>
-        
-        <p>Visit <a href="https://example.com">Example.com</a> for more info.</p>
-        
-        <pre><code>
-def hello_world():
-    print("Hello from terminal browser!")
-        </code></pre>
-    </body>
-    </html>
-    """
-
     print("=== Testing with sample HTML ===")
-    browser.render_html_string(sample_html)
 
-    print("\n" + "=" * 50 + "\n")
-
-    # Test with real URL (uncomment to test)
     browser.navigate("https://httpbin.org/html")

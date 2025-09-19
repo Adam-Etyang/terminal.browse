@@ -1,62 +1,64 @@
-#!/usr/bin/env python3
-import re
+"""A module for rendering HTML in the terminal."""
+
 from rich.console import Console
 from rich.panel import Panel
-from rich import box
-import lxml
+from rich.box import DOUBLE
 
 
 class TerminalRenderer:
+    """A class for rendering HTML in the terminal."""
+
     def __init__(self, width=80):
+        """Initialize the TerminalRenderer."""
         self.console = Console(width=width)
         self.width = width
         self.output = []
-
-        # Recursively render HTML elements
+        self.tag_renderers = {
+            "h1": self.render_heading,
+            "h2": self.render_heading,
+            "h3": self.render_heading,
+            "h4": self.render_heading,
+            "h5": self.render_heading,
+            "h6": self.render_heading,
+            "p": self.render_paragraph,
+            "a": self.render_link,
+            "ul": self.render_list,
+            "ol": self.render_list,
+            "li": self.render_list_item,
+            "pre": self.render_preformatted,
+            "code": self.render_code,
+            "strong": self.render_bold,
+            "b": self.render_bold,
+            "em": self.render_italic,
+            "i": self.render_italic,
+            "br": lambda element, indent: self.output.append(""),
+            "hr": lambda element, indent: self.output.append("─" * self.width),
+        }
 
     def render_element(self, element, indent=0):
+        """Recursively render an HTML element."""
         if element.name is None:
             text = str(element).strip()
             if text:
                 self.output.append(" " * indent + text)
             return
-        tag = str(element.name).lower()
-        print(f"Debug rendering tag: {tag} type{type(tag)}")
 
-        # handle different HTML tags
-        if tag in ["h1", "h2", "h3", "h4", "h5", "h6"]:
-            self.render_heading(element, indent, tag)
-        elif tag == "p":
-            self.render_paragraph(element, indent)
-        elif tag == "a":
-            self.render_link(element, indent)
-        elif tag in ["ul", "ol"]:
-            self.render_list(element, tag, indent)
-        elif tag == "li":
-            self.render_list_item(element, indent)
-        elif tag == "pre":
-            self.render_preformatted(element, indent)
-        elif tag == "code":
-            self.render_code(element, indent)
-        elif tag in ["strong", "b"]:
-            self.render_bold(element, indent)
-        elif tag in ["em", "i"]:
-            self.render_italic(element, indent)
-        elif tag == "br":
-            self.output.append("")
-        elif tag == "hr":
-            self.output.append("─" * self.width)
+        tag = element.name.lower()
+        renderer = self.tag_renderers.get(tag)
+
+        if renderer:
+            renderer(element, indent)
         else:
             # For unknown tags, just render children
             for child in element.children:
                 self.render_element(child, indent)
 
-    # TODO: create rendering functions for headings, paragraphs, links, lists,code blocks, blockquotes
     def render_page(self, soup, title=""):
+        """Render a full HTML page."""
         self.output = []
 
         if title:
-            self.console.print(Panel(title, style="bold blue", box=box.DOUBLE))
+            self.console.print(Panel(title, style="bold blue", box=DOUBLE))
 
         body = soup.find("body") or soup
 
@@ -66,18 +68,13 @@ class TerminalRenderer:
         for line in self.output:
             self.console.print(line)
 
-    def render_heading(self, element, indent, tag):
-        print(f"Debug tag: {tag} type{type(tag)}")
+    def render_heading(self, element, indent):
+        """Render a heading element."""
         text = element.get_text().strip()
-
         if not text:
             return
 
-        try:
-            level = int(tag[1])
-        except (IndexError, TypeError) as e:
-            print(f"Error determining heading level: {e} tag={tag}")
-            return
+        level = int(element.name[1])
 
         if level == 1:
             self.output.append(" ")
@@ -94,7 +91,7 @@ class TerminalRenderer:
             self.output.append("")
 
     def render_paragraph(self, element, indent):
-        """Render paragraph with word wrapping"""
+        """Render a paragraph with word wrapping."""
         text = element.get_text().strip()
         if text:
             # Simple word wrapping
@@ -110,25 +107,29 @@ class TerminalRenderer:
                 self.output.append(line)
             self.output.append("")
 
-    def render_list(self, element, list_type, indent):
+    def render_list(self, element, indent):
+        """Render an ordered or unordered list."""
         self.output.append("")
-        for i, li in enumerate(element.find_all("li", recursive=False)):
+        list_type = element.name.lower()
+        for i, list_item in enumerate(element.find_all("li", recursive=False)):
             if list_type == "ol":
                 marker = f"{i + 1}. "
             else:
                 marker = "• "
 
-            li_text = li.get_text().strip()
+            li_text = list_item.get_text().strip()
             if li_text:
                 self.output.append(" " * indent + marker + li_text)
         self.output.append("")
 
     def render_list_item(self, element, indent):
+        """Render a list item."""
         text = element.get_text().strip()
         if text:
             self.output.append(" " * indent + "• " + text)
 
     def render_link(self, element, indent):
+        """Render a link."""
         text = element.get_text().strip()
         href = element.get("href", "").strip()
         if text:
@@ -138,6 +139,7 @@ class TerminalRenderer:
                 self.output.append(text)
 
     def render_preformatted(self, element, indent):
+        """Render preformatted text."""
         text = element.get_text()
         self.output.append("")
         for line in text.splitlines():
@@ -145,16 +147,19 @@ class TerminalRenderer:
         self.output.append("")
 
     def render_code(self, element, indent):
+        """Render a code block."""
         text = element.get_text().strip()
         if text:
             self.output.append(" " * indent + f"`{text}`")
 
     def render_bold(self, element, indent):
+        """Render bold text."""
         text = element.get_text().strip()
         if text:
             self.output.append(" " * indent + f"**{text}**")
 
     def render_italic(self, element, indent):
+        """Render italic text."""
         text = element.get_text().strip()
         if text:
             self.output.append(" " * indent + f"*{text}*")

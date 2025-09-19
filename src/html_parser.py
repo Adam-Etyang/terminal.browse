@@ -1,5 +1,4 @@
-"""A simple HTML parser using BeautifulSoup."""
-
+#!/usr/bin/env python3
 from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
