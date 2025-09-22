@@ -40,4 +40,4 @@ if __name__ == "__main__":
 
     print("=== Testing with sample HTML ===")
 
-    browser.navigate("https://httpbin.org/html")
+    browser.navigate("https://en.wikipedia.org/wiki/Maize")

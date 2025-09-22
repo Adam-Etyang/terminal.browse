@@ -21,7 +21,7 @@ class TerminalRenderer:
                 self.output.append(" " * indent + text)
             return
         tag = str(element.name).lower()
-        print(f"Debug rendering tag: {tag} type{type(tag)}")
+        #        print(f"Debug rendering tag: {tag} type{type(tag)}")
 
         # handle different HTML tags
         if tag in ["h1", "h2", "h3", "h4", "h5", "h6"]:
@@ -67,7 +67,7 @@ class TerminalRenderer:
             self.console.print(line)
 
     def render_heading(self, element, indent, tag):
-        print(f"Debug tag: {tag} type{type(tag)}")
+        #        print(f"Debug tag: {tag} type{type(tag)}")
         text = element.get_text().strip()
 
         if not text:
