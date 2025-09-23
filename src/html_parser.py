@@ -3,6 +3,7 @@ import subprocess
 from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
+import json
 
 
 # TODO: Obtain and parse HTML content using curl
@@ -16,6 +17,7 @@ class HTMLParser:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        self.last_repsonse = {}
 
         # TODO: Add method to fetch HTML using curl
 
@@ -41,25 +43,62 @@ class HTMLParser:
                 timeout=20
             )
             
-            if result.returncode != 0;
+            if result.returncode != 0:
                 raise Exception(f"curl failed: {result.stderr}")
                 
             #split resonse int from content
+            lines = result.stdout.split('\n')
+            response_info = lines[-1]
+            html_content = '\n'.join(lines[:-1])
+            
+            #parse info
+            try:
+                self.last_repsonse = json.loads(response_info)
+                http_code = int(self.last_repsonse.get('http_code',0))
+                
+                if http_code >=400:
+                    raise Exception(f"HTTP{http_code} error")
+            except json.JSONDecodeError:
+                html_content = result.stdout
+                self.last_repsonse = {'http_code': '200'}
+            
+            return html_content
+            
+        except subprocess.TimeoutExpired:
+            raise Exception("Request timed out")
+        except FileNotFoundError:
+            raise Exception("curl not found. Please install curl.")
+            
+    def parse_url(self, url):
+        """Fetch and parse HTML from URL using curl"""
+        try:
+            print(f"Fetching {url} with curl...")
+            
+            # Optional: Add browser-like headers
+            headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive'
+            }
+            
+            html_content,response_info = self.fetch_url(url, headers)
+            self.base_url = url
+            self.soup = BeautifulSoup(html_content, 'lxml')
+            
+            # Print response info
+            print(f"HTTP {self.last_repsonse.get('http_code', 'Unknown')}")
+            print(f"Content-Type: {self.last_repsonse.get('content_type', 'Unknown')}")
+            
+            return self.soup
+            
+        except Exception as e:
+            raise Exception(f"Failed to fetch {url}: {e}") 
+        
             
             
             
 
-    def parse_url(self, url):
-        """Fetch a URL and parse the HTML."""
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            self.soup = BeautifulSoup(response.content, "lxml")
-            self.base_url = url
-            return self.soup
-        except requests.exceptions.RequestException as ex:
-            print(f"Error fetching URL {url}: {ex}")
-            return None
 
     def parse_html(self, html_string):
         """Parse HTML from a string."""
