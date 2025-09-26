@@ -1,5 +1,3 @@
-<tbr/.github/workflows/python-ci.yml>
-# This is a basic GitHub Actions workflow for Python CI
 name: Python CI
 
 on:
