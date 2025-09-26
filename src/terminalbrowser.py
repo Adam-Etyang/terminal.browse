@@ -37,7 +37,9 @@ class TerminalBrowser:
 # Example usage
 if __name__ == "__main__":
     browser = TerminalBrowser(width=100)
-
-    print("=== Testing with sample HTML ===")
-
-    browser.navigate("https://en.wikipedia.org/wiki/Python_(programming_language)")
+    try:
+        url = str(input("Enter URL: "))
+        if url:
+            browser.navigate(url)
+    except Exception as e:
+        print(f"Error navigating: {e}")

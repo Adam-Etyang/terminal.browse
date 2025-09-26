@@ -118,6 +118,27 @@ class HTMLParser:
             return urljoin(self.base_url, url)
         return url
 
+    def parse_input(self,soup):
+        form = soup.find('form') 
+        if not form:
+            print('no form found')
+            return None
+            
+        input_data = {}
+        for input_tag in form.find_all('input'):
+            name = input_tag.get('name')
+            input_type = input_tag.get('type','text')
+            placeholder = input_tag.get('placeholder','')
+            input_data[name] = {
+                'type' : input_type,
+                'placeholder' : placeholder
+            }
+        return input_data
+            
+        
+        
+           
+        
     def parse_string(self, html_string):
         """Parse HTML from a string."""
         self.soup = BeautifulSoup(html_string, "lxml")

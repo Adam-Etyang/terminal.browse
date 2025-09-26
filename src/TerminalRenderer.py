@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+from asyncio.unix_events import SelectorEventLoop
 from http.client import RemoteDisconnected
+from rich.color import name
 from rich.console import Console
 from rich.panel import Panel
 from rich import box
+from rich.text import Text
 from bs4 import BeautifulSoup
 from bs4 import Comment
 import importlib
@@ -49,12 +52,24 @@ class TerminalRenderer:
             self.output.append("")
         elif tag == "hr":
             self.output.append("─" * self.width)
+        elif tag in ["input", "textarea", "form"]:
+            self.render_input(element, name)
         else:
             # For unknown tags, just render children
             for child in element.children:
                 self.render_element(child)
 
-    # TODO: create rendering functions for headings, paragraphs, links, lists,code blocks, blockquotes
+    # TODO: fix ts
+    def render_input(self, name, input_type, placeholder=""):
+        """Render a text representation of an input box."""
+        box_line = Text(f"[{name}] ", style="bold yellow")
+
+        if input_type == "text":
+            content = PlaceholderPrompt.ask(placeholder=placeholder)
+        elif input_type == "password":
+            content = PlaceholderPrompt.ask(placeholder=placeholder, password=True)
+        else:
+            content = PlaceholderPrompt.ask(placeholder=placeholder)
 
     def render_page(self, soup, title=""):
         self.output = []
