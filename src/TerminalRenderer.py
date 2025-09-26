@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 from rich.console import Console
 from rich.panel import Panel
 from rich import box
