@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
+from http.client import RemoteDisconnected
 from rich.console import Console
 from rich.panel import Panel
 from rich import box
+from bs4 import BeautifulSoup
+from bs4 import Comment
+import importlib
 import lxml
 
 
@@ -48,9 +52,10 @@ class TerminalRenderer:
         else:
             # For unknown tags, just render children
             for child in element.children:
-                self.render_element(child, indent)
+                self.render_element(child)
 
     # TODO: create rendering functions for headings, paragraphs, links, lists,code blocks, blockquotes
+
     def render_page(self, soup, title=""):
         self.output = []
 
@@ -58,7 +63,19 @@ class TerminalRenderer:
             self.console.print(Panel(title, style="bold blue", box=box.DOUBLE))
 
         body = soup.find("body") or soup
+        self.remove_metadata(body)
+        self.render_element(body)
 
+        for line in self.output:
+            self.console.print(line)
+
+    def remove_metadata(self, soup) -> None:
+        for element in soup(["script", "style", "link", "meta", "noscript"]):
+            element.decompose()
+
+        for comment in soup(text=lambda text: isinstance(text, Comment)):
+            comment.extract()
+        body = soup.find("body") or soup
         for element in body.children:
             self.render_element(element)
 
@@ -157,3 +174,17 @@ class TerminalRenderer:
         text = element.get_text().strip()
         if text:
             self.output.append(" " * indent + f"*{text}*")
+
+    def render_div(self, element, indent):
+        for child in element.children:
+            self.render_element(child, indent)
+
+    def render_header(self, element, indent):
+        text = element.get_text().strip()
+        if text:
+            self.output.append(" " * indent + f"#{text}")
+
+    def render_nav(self, element, indent):
+        text = element.get_text().strip()
+        if text:
+            self.output.append(" " * indent + f"##{text}")
