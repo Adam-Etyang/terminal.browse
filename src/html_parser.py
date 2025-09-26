@@ -124,8 +124,10 @@ class HTMLParser:
         return self.soup
 
 
+"""
 if __name__ == "__main__":
     p = HTMLParser()
     html, info = p.fetch_url("https://en.wikipedia.org/wiki/Maize")
     print("Status:", info["http_code"])
     print(html)
+"""
