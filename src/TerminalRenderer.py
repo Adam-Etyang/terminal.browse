@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-from asyncio.unix_events import SelectorEventLoop
-from http.client import RemoteDisconnected
-from rich.color import name
+from multiprocessing import Array
 from rich.console import Console
 from rich.panel import Panel
 from rich import box
+from rich.prompt import Prompt
 from rich.text import Text
-from bs4 import BeautifulSoup
-from bs4 import Comment
-import importlib
-import lxml
+from bs4 import BeautifulSoup, Comment
+
+
+class PlaceholderPrompt(Prompt):
+    def __init__(self, *args, **kwargs):
+        self.placeholder = kwargs.pop("placeholder", "")
+        super().__init__(*args, **kwargs)
+
+    def process_input(self, value):
+        return value or self.placeholder
 
 
 class TerminalRenderer:
@@ -52,24 +57,31 @@ class TerminalRenderer:
             self.output.append("")
         elif tag == "hr":
             self.output.append("─" * self.width)
-        elif tag in ["input", "textarea", "form"]:
-            self.render_input(element, name)
+        elif tag in ["input", "textarea"]:
+            self.render_input(element)
         else:
             # For unknown tags, just render children
             for child in element.children:
                 self.render_element(child)
 
     # TODO: fix ts
-    def render_input(self, name, input_type, placeholder=""):
-        """Render a text representation of an input box."""
-        box_line = Text(f"[{name}] ", style="bold yellow")
 
-        if input_type == "text":
-            content = PlaceholderPrompt.ask(placeholder=placeholder)
-        elif input_type == "password":
-            content = PlaceholderPrompt.ask(placeholder=placeholder, password=True)
-        else:
-            content = PlaceholderPrompt.ask(placeholder=placeholder)
+    def render_input(self, element):
+        """Render a text representation of an input box."""
+        input_type = element.get("type", "text")
+        name = element.get("name", "input")
+        placeholder = element.get("placeholder", "")
+
+        # Visualize the input box using rich
+        content = Text(f"[{name}] ", style="bold yellow")
+        content.append(f"({input_type}) ")
+
+        if placeholder:
+            content.append(f"- {placeholder} ")
+
+        # Simulate user input via prompt
+        user_input = PlaceholderPrompt.ask(f"{content}")
+        self.output.append(f"{content}: {user_input}")
 
     def render_page(self, soup, title=""):
         self.output = []
