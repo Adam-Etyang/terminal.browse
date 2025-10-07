@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from _typeshed import ProfileFunction
 import requests
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
@@ -296,10 +295,36 @@ class Fetcher:
             
         # For auto mode, check heuristics
         return self.heuristics.looks_dynamic(html)
+        
+    def fetch(self,url:str) -> PageResource:
+        logger.info(f"Fetching page content from {url} in mode: {self.mode}")
+        
+        try:
+            if self.mode == "dynamic":
+                resource = StaticFetcher.fetch_with_css(url)
+                
+            if self._should_use_dynamic(resource.html):
+                if self.prompt_for_dynamic:
+                    response = input("\nThis page appears to require JavaScript. Fetch with dynamic renderer? (y/n): ")
+                    if response.lower() != "y":
+                        logger.info("Fetching page content with dynamic renderer")
+                        return resource
+                        
+                    logger.info("Fetching page content with dynamic renderer")
+                    return DynamicFetcher.fetch_with_css(url)
+                    
+                return resource
+                
+            return DynamicFetcher.fetch_with_css(url)
+            
+        except Exception as e:
+            logger.error(f"Error fetching page content: {e}")
+            
+            return PageResource(
+                html=f"<html><body><h1>Error fetching {url}</h1><p>{str(e)}</p></body></html>",
+                css="",
+                url=url,
+                status_code=500,
+                is_dynamic_render=False
+            )
     
-    
-    def Fetch_static(self,url):
-        pass
-    def fetch_dynamic(self,url):
-        pass
-
