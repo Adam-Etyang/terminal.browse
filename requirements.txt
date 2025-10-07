@@ -4,3 +4,4 @@ Pygments==2.19.2
 rich==14.1.0
 beautifulsoup4==4.13.2
 playwright==1.37.0
+pytest==7.4.0

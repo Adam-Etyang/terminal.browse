@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from html_parser import HTMLParser
+from Parser import HTMLParser
 from TerminalRenderer import TerminalRenderer
 
 

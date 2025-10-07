@@ -327,4 +327,3 @@ class Fetcher:
                 status_code=500,
                 is_dynamic_render=False
             )
-    
