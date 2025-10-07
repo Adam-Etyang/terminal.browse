@@ -27,7 +27,7 @@ class PageResource:
     css:str
     url:str
     title:Optional[str] = None
-    statust_code :int = 200
+    status_code :int = 200
     is_dynamic_render : bool = False
 
     @property
@@ -115,27 +115,191 @@ class StaticFetcher:
             return ""
             
     @staticmethod
+    def fetch_css(base_url:str, css_url:str) -> str:
+        """Fetch a CSS file, resolving relative URLs"""
+        try:
+            full_url = urljoin(base_url, css_url)
+            response = requests.get(full_url, timeout=5)
+            response.raise_for_status()
+            
+            # Quick fix for relative URLs in CSS
+            css_text = response.text
+            # Convert url(relative) to url(absolute)
+            css_text = re.sub(r'url\([\'"]?(?!http)([^\'")]+)[\'"]?\)', 
+                             lambda m: f'url({urljoin(full_url, m.group(1))})', 
+                             css_text)
+            
+            return css_text
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Failed to fetch CSS from {css_url}: {e}")
+            return ""  # Return empty string on failure
+            
+    @classmethod 
+    def fetch_with_css(cls,url:str) -> PageResource:
+        """Fetch HTML and all associated CSS"""
+        html, status = cls.fetch(url)
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Extract title
+        title_tag = soup.find("title")
+        title = title_tag.text if title_tag else url
+        
+        # Collect all CSS
+        css_bundle = []
+        
+        # 1. Inline <style> tags
+        for style in soup.find_all("style"):
+            css_bundle.append(style.text)
+        
+        # 2. Linked stylesheets
+        for link in soup.find_all("link", rel="stylesheet", href=True):
+            css_url = link["href"]
+            css_content = cls.fetch_css(url, css_url)
+            if css_content:
+                css_bundle.append(css_content)
+        
+        # 3. Collect inline styles (for reference)
+        inline_styles = []
+        for tag in soup.find_all(attrs={"style": True}):
+            selector = cls._get_selector_for_element(tag)
+            if selector:
+                inline_styles.append(f"{selector} {{ {tag['style']} }}")
+        
+        if inline_styles:
+            css_bundle.append("\n".join(inline_styles))
+            
+        return PageResource(
+            html=html,
+            css="\n".join(css_bundle),
+            url=url,
+            title=title,
+            status_code=status,
+            is_dynamic_render=False
+        )
+    @staticmethod
+    def _get_selector_for_element(tag) -> Optional[str]:
+        """Generate a simple CSS selector for an element (best effort)"""
+        if tag.get('id'):
+            return f"#{tag['id']}"
+        
+        if tag.get('class'):
+            classes = '.'.join(tag['class'])
+            return f"{tag.name}.{classes}"
+        
+        return tag.name
+         
+
+class DynamicFetcher:
+    
+    @classmethod
+    def is_available(cls) ->bool:
+        return PLAYWRIGHT_AVAILABLE
+    
+    @classmethod
     def fetch_with_css(cls,url:str)->PageResource:
-        pass
-        
-        
-        
-
-
-
-
+        if not cls.is_available():
+            raise ImportError("Playwright is not installed")
+            
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            content = browser.new_content(
+                viewport={"width":1200, "height":800},
+                user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36"
+            )
+            page = content.new_page()
+            try:
+                response = page.goto(url, wait_until="networkidle", timeout=20000)
+                status_code = response.status if response else 200
+                
+                # Get title
+                title = page.title()
+                
+                # Get rendered HTML
+                html = page.content()
+                
+                # Extract all CSS
+                css_bundle = page.evaluate("""
+                    () => {
+                        // Collect all stylesheet content
+                        const sheets = Array.from(document.styleSheets);
+                        const cssTexts = [];
+                        
+                        for (const sheet of sheets) {
+                            try {
+                                const rules = Array.from(sheet.cssRules);
+                                cssTexts.push(rules.map(r => r.cssText).join("\\n"));
+                            } catch (e) {
+                                // CORS error for external stylesheets
+                                console.warn("Could not access stylesheet rules:", e);
+                            }
+                        }
+                        
+                        // Also collect inline styles
+                        const elements = document.querySelectorAll('[style]');
+                        const inlineStyles = [];
+                        
+                        for (const el of elements) {
+                            let selector = '';
+                            if (el.id) {
+                                selector = '#' + el.id;
+                            } else if (el.className) {
+                                selector = el.tagName.toLowerCase() + '.' + 
+                                    el.className.split(' ').join('.');
+                            } else {
+                                selector = el.tagName.toLowerCase();
+                            }
+                            
+                            inlineStyles.push(`${selector} { ${el.style.cssText} }`);
+                        }
+                        
+                        if (inlineStyles.length > 0) {
+                            cssTexts.push(inlineStyles.join("\\n"));
+                        }
+                        
+                        return cssTexts.join("\\n");
+                    }
+                """)
+                return PageResource(
+                    html=html,
+                    css=css_bundle,
+                    url=url,
+                    title=title,
+                    status_code=status_code,
+                    is_dynamic_render=True
+                )
+            except:
+                logger.error(f"Error fetching page content: {e}")
+                raise
+            finally:
+                browser.close()
+    
 
 #main fetcher that combines static and dynamic apporaches
 class Fetcher:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, mode="auto",prompt_for_dynamic=True) -> None:
+        self.mode = mode
+        self.prompt_for_dynamic = prompt_for_dynamic
+        self.heuristics = HeuristicsEngine()
+        
+        self.dynamic_available = DynamicFetcher.is_available()
+        if not self.dynamic_available:
+            logger.warning("Dynamic fetching is not available")
+            self.mode = "static"
+    
+    def _should_use_dynamic(self,html:str) -> bool:
+        """Determine if dynamic fetcher should be used"""
+        if self.mode == "static" or not self.dynamic_available:
+            return False
+            
+        if self.mode == "dynamic":
+            return True
+            
+        # For auto mode, check heuristics
+        return self.heuristics.looks_dynamic(html)
+    
+    
     def Fetch_static(self,url):
         pass
     def fetch_dynamic(self,url):
         pass
 
-class Heuristic:
-    def __init__(self) -> None:
-        pass
-    def looks_dynamic(self):
-        pass
