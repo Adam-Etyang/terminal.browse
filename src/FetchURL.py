@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from urllib.parse import urlparse, urljoin
 import logging
+import lxml
 from typing import Optional, Tuple, List
 import re
 
@@ -28,7 +29,7 @@ class PageResource:
     css: str
     url: str
     title: Optional[str] = None
-    status_code: int = 200
+    status_code: int = 200  # might change this later in the case of an unsuccessful request or falsey data
     is_dynamic_render: bool = False
 
     @property
@@ -40,12 +41,14 @@ class PageResource:
         return f"Pageresource(url = {self.url}, title={self.title}, dynamic={self.is_dynamic_render})"
 
 
+# Determines if a page is dynamic or static
 class HeuristicsEngine:
     @staticmethod
     def looks_dynamic(html: str) -> bool:
-        soup = BeautifulSoup(html, "html-parser")
+        soup = BeautifulSoup(html, "lxml")
         body = soup.body
 
+        #checks if html body is minimal(most likely to be a dynamic page if it is)
         if not body:
             return True
         text = body.get_text(strip=True)
@@ -64,6 +67,7 @@ class HeuristicsEngine:
             soup.find(attrs={"ng-app": True}),
             soup.find(attrs={f"data-reactroot": True}),
         ]
+        
         if any(framework_indicators):
             logger.info("Page may be dynamic: SPA markers included")
             return True
@@ -148,7 +152,7 @@ class StaticFetcher:
     def fetch_with_css(cls, url: str) -> PageResource:
         """Fetch HTML and all associated CSS"""
         html, status = cls.fetch(url)
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(html, "lxml")
 
         # Extract title
         title_tag = soup.find("title")
