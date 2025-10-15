@@ -23,7 +23,7 @@ sys.path.append(
 from FetchURL import Fetcher, StaticFetcher, HeuristicsEngine, PageResource
 
 # Use a random free port (localhost mini server for testing)
-PORT = 8899
+PORT = 0 # 0 means the OS will pick a random available port
 
 
 class TestServer:
@@ -48,6 +48,7 @@ class TestServer:
         os.chdir(self.tempdir.name)
         handler = http.server.SimpleHTTPRequestHandler
         self.httpd = socketserver.TCPServer(("127.0.0.1", self.port), handler)
+        self.port = self.httpd.server_address[1] # Update port with the one chosen by the OS
         self.thread = threading.Thread(target=self.httpd.serve_forever)
         self.thread.daemon = True
         self.thread.start()

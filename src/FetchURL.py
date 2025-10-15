@@ -96,7 +96,7 @@ class HeuristicsEngine:
 
 class StaticFetcher:
     @staticmethod
-    def fetch(url: str) -> Tuple[str, int]:
+    def fetch(url: str) -> tuple[str, int]:
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -216,11 +216,11 @@ class DynamicFetcher:
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            content = browser.new_content(
+            context = browser.new_context(
                 viewport={"width": 1200, "height": 800},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36",
             )
-            page = content.new_page()
+            page = context.new_page()
             try:
                 response = page.goto(url, wait_until="networkidle", timeout=20000)
                 status_code = response.status if response else 200

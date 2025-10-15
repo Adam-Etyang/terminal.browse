@@ -1,0 +1,139 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.7, pytest-7.4.0, pluggy-1.6.0 -- /Users/adam/Projects/tbr/.venv/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/adam/Projects/tbr
+collecting ... collected 6 items
+
+tests/test_fetching.py::test_static_html_and_css_fetch FAILED            [ 16%]
+tests/test_fetching.py::test_fetch_css_resolves_relative_urls FAILED     [ 33%]
+tests/test_fetching.py::test_heuristics_detects_dynamic_html PASSED      [ 50%]
+tests/test_fetching.py::test_heuristics_accepts_static_html FAILED       [ 66%]
+tests/test_fetching.py::test_dynamic_fetch FAILED                        [ 83%]
+tests/test_fetching.py::test_fetch_error_handling PASSED                 [100%]
+
+=================================== FAILURES ===================================
+________________________ test_static_html_and_css_fetch ________________________
+
+    def test_static_html_and_css_fetch():
+        """Should correctly fetch HTML and linked CSS"""
+        html = textwrap.dedent("""\
+            <html>
+              <head><link rel="stylesheet" href="style.css"></head>
+              <body>
+                <h1>Hello world</h1>
+              </body>
+            </html>
+        """)
+        css = "h1 { color: red; }"
+    
+        server = TestServer(html, css)
+        server.start()
+    
+        try:
+            fetcher = Fetcher(mode="static", prompt_for_dynamic=False)
+            result: PageResource = fetcher.fetch(server.base_url)
+    
+            assert "<h1>Hello world</h1>" in result.html
+            assert "color: red" in result.css
+            assert result.status_code == 200
+>           assert not result.is_dynamic_render
+E           assert not True
+E            +  where True = PageResource(html='<html><head><link rel="stylesheet" href="style.css"></head>\n  <body>\n    <h1>Hello world</h1>\n  \n\n</body></html>', css='h1 { color: red; }', url='http://127.0.0.1:8899/index.html', title='', status_code=200, is_dynamic_render=True).is_dynamic_render
+
+/Users/adam/Projects/tbr/tests/test_fetching.py:93: AssertionError
+----------------------------- Captured stderr call -----------------------------
+127.0.0.1 - - [09/Oct/2025 18:02:02] "GET /index.html HTTP/1.1" 200 -
+127.0.0.1 - - [09/Oct/2025 18:02:02] "GET /style.css HTTP/1.1" 200 -
+127.0.0.1 - - [09/Oct/2025 18:02:03] "GET /index.html HTTP/1.1" 200 -
+127.0.0.1 - - [09/Oct/2025 18:02:03] "GET /style.css HTTP/1.1" 200 -
+____________________ test_fetch_css_resolves_relative_urls _____________________
+
+    def test_fetch_css_resolves_relative_urls():
+        """Should correctly make relative URLs absolute inside CSS"""
+        html = textwrap.dedent("""\
+            <html><head><link rel="stylesheet" href="style.css"></head></html>
+        """)
+        css = "body { background: url('images/bg.png'); }"
+    
+        server = TestServer(html, css)
+        os.makedirs(os.path.join(server.tempdir.name, "images"), exist_ok=True)
+        with open(os.path.join(server.tempdir.name, "images", "bg.png"), "wb") as f:
+            f.write(b"fakeimage")
+    
+>       server.start()
+
+/Users/adam/Projects/tbr/tests/test_fetching.py:110: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/Users/adam/Projects/tbr/tests/test_fetching.py:50: in start
+    self.httpd = socketserver.TCPServer(("127.0.0.1", self.port), handler)
+/opt/homebrew/Cellar/python@3.13/3.13.7/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:457: in __init__
+    self.server_bind()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <socketserver.TCPServer object at 0x10ba83ed0>
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+    
+        May be overridden.
+    
+        """
+        if self.allow_reuse_address and hasattr(socket, "SO_REUSEADDR"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Since Linux 6.12.9, SO_REUSEPORT is not allowed
+        # on other address families than AF_INET/AF_INET6.
+        if (
+            self.allow_reuse_port and hasattr(socket, "SO_REUSEPORT")
+            and self.address_family in (socket.AF_INET, socket.AF_INET6)
+        ):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+>       self.socket.bind(self.server_address)
+E       OSError: [Errno 48] Address already in use
+
+/opt/homebrew/Cellar/python@3.13/3.13.7/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:478: OSError
+_____________________ test_heuristics_accepts_static_html ______________________
+
+    def test_heuristics_accepts_static_html():
+        """Should classify normal HTML as static"""
+        html = "<html><body><h1>Blog Post</h1><p>Hello</p></body></html>"
+>       assert not HeuristicsEngine.looks_dynamic(html)
+E       AssertionError: assert not True
+E        +  where True = <function HeuristicsEngine.looks_dynamic at 0x10bb34ae0>('<html><body><h1>Blog Post</h1><p>Hello</p></body></html>')
+E        +    where <function HeuristicsEngine.looks_dynamic at 0x10bb34ae0> = HeuristicsEngine.looks_dynamic
+
+/Users/adam/Projects/tbr/tests/test_fetching.py:134: AssertionError
+______________________________ test_dynamic_fetch ______________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ba5ba80>
+
+    @pytest.mark.skipif(
+        not hasattr(__import__("FetchURL"), "DynamicFetcher")
+        or not __import__("FetchURL").DynamicFetcher.is_available(),
+        reason="Playwright not installed"
+    )
+    def test_dynamic_fetch(monkeypatch):
+        """Only runs if Playwright available"""
+        fetcher = Fetcher(mode="dynamic")
+        # You can replace this with a small test site that uses JS, like a React demo
+        result = fetcher.fetch("https://httpbin.org/html")
+        assert "<html" in result.html.lower()
+        assert isinstance(result.css, str)
+>       assert result.is_dynamic_render
+E       assert False
+E        +  where False = PageResource(html="<html><body><h1>Error fetching https://httpbin.org/html</h1><p>name 'e' is not defined</p></body></html>", css='', url='https://httpbin.org/html', title=None, status_code=500, is_dynamic_render=False).is_dynamic_render
+
+/Users/adam/Projects/tbr/tests/test_fetching.py:149: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    fetcher:FetchURL.py:340 Error fetching page content: name 'e' is not defined
+=============================== warnings summary ===============================
+tests/test_fetching.py:29
+  /Users/adam/Projects/tbr/tests/test_fetching.py:29: PytestCollectionWarning: cannot collect test class 'TestServer' because it has a __init__ constructor (from: tests/test_fetching.py)
+    class TestServer:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_fetching.py::test_static_html_and_css_fetch - assert not True
+FAILED tests/test_fetching.py::test_fetch_css_resolves_relative_urls - OSErro...
+FAILED tests/test_fetching.py::test_heuristics_accepts_static_html - Assertio...
+FAILED tests/test_fetching.py::test_dynamic_fetch - assert False
+==================== 4 failed, 2 passed, 1 warning in 2.35s ====================
