@@ -30,8 +30,10 @@ class StyleResolver:
     def apply_styles(node: Node, css_rules: List[Tuple[str, Dict[str, str]]]) -> None:
         """Recursively apply all matching CSS rules to the Node tree."""
         for selector, props in css_rules:
-            if StyleResolver.match_selector(node, selector):
-                node.computed_style.update(props)
+            selectors = [s.strip() for s in selector.split(",") if s.strip()]
+            for sel in selectors: 
+                if StyleResolver.match_selector(node, sel):
+                    node.computed_style.update(props)
 
         for child in node.children:
             StyleResolver.apply_styles(child, css_rules)
