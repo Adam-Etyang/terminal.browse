@@ -1,5 +1,5 @@
 from typing import Dict, List, Tuple
-from HTMLParser import Node  # import your existing Node class
+from HTMLParser import Node  
 
 
 class StyleResolver:
@@ -25,30 +25,51 @@ class StyleResolver:
         # Tag selector (e.g. h1, div, p)
         else:
             return node.tag == selector
+            
     @staticmethod
-    def specificty_score(selector: str) -> int:
+    def parse_inline_style(style_str: str) -> Dict[str, str]:
+        """Convert inline style string like 'color:red; font-size:12px' into a dict."""
+        styles: Dict[str, str] = {}
+        declarations = [d.strip() for d in style_str.split(";") if d.strip()]
+        for decl in declarations:
+            if ":" in decl:
+                prop, val = decl.split(":", 1)
+                styles[prop.strip()] = val.strip()
+        return styles
+        
+    @staticmethod
+    def specificity_score(selector: str) -> int:
         selector = selector.strip()
         ids = selector.count("#")
         classes = selector.count(".")
         
         tags = 1 if selector and not selector.startswith(("#",".")) else 0
         return ids * 100 + classes * 10 + tags
-
+        
     @staticmethod
     def apply_styles(node: Node, css_rules: List[Tuple[str, Dict[str, str]]]) -> None:
-        """Recursively apply all matching CSS rules to the Node tree."""
-        applied_specificity :Dict[str,int] = {}
-        
+        """Recursively apply CSS rules with specificity and inline style override."""
+        applied_specificity: Dict[str, int] = {}
+    
+        #Apply regular CSS rules (with specificity)
         for selector, props in css_rules:
             selectors = [s.strip() for s in selector.split(",") if s.strip()]
-            for sel in selectors: 
+            for sel in selectors:
                 if StyleResolver.match_selector(node, sel):
-                    score = StyleResolver.specificty_score(sel)
+                    score = StyleResolver.specificity_score(sel)
                     for prop, value in props.items():
-                        current = applied_specificity.get(prop, -1)
+                        current = applied_specificity.get(prop)
                         if current is None or score >= current:
-                            node.computed_style[prop]= value
+                            node.computed_style[prop] = value
                             applied_specificity[prop] = score
-
+    
+        # Handle inline styles (highest priority)
+        if "style" in node.attrs:
+            inline_styles = StyleResolver.parse_inline_style(node.attrs["style"])
+            for prop, value in inline_styles.items():
+                node.computed_style[prop] = value
+                applied_specificity[prop] = 1000  # force to top priority
+    
+        # Recurse for children
         for child in node.children:
             StyleResolver.apply_styles(child, css_rules)
