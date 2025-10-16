@@ -48,7 +48,7 @@ class HeuristicsEngine:
         soup = BeautifulSoup(html, "lxml")
         body = soup.body
 
-        #checks if html body is minimal(most likely to be a dynamic page if it is)
+        # checks if html body is minimal(most likely to be a dynamic page if it is)
         if not body:
             return True
         text = body.get_text(strip=True)
@@ -67,7 +67,7 @@ class HeuristicsEngine:
             soup.find(attrs={"ng-app": True}),
             soup.find(attrs={f"data-reactroot": True}),
         ]
-        
+
         if any(framework_indicators):
             logger.info("Page may be dynamic: SPA markers included")
             return True

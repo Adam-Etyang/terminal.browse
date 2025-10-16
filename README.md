@@ -10,3 +10,6 @@
 
 ## Things done on 29th June 2024:
 - Began on the fetching layer
+
+## 15th Oct
+
