@@ -1,8 +1,12 @@
 from typing import Optional
+
 from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
 from rich.style import Style
+from rich.syntax import Syntax
+from rich.markdown import Markdown
+
 from ..Parser.HTMLParser import Node
 
 
@@ -13,6 +17,7 @@ class TerminalRenderer:
     HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
     LIST_TAGS = {"ul", "ol", "li"}
     TEXT_TAG = "_text"
+    
 
     def __init__(self, force_color: bool = True):
         self.console = Console(force_terminal=force_color, color_system="truecolor")
@@ -30,6 +35,8 @@ class TerminalRenderer:
             self.render_list(node, tag, indent, parent_style)
         elif tag in self.INLINE_TAGS:
             self.render_inline(node, indent, parent_style)
+        elif tag == "pre" or tag == "code":
+            self.render_code(node, indent)
         elif tag == self.TEXT_TAG:
             self.render_text(node, indent, parent_style)
         else:
@@ -101,6 +108,35 @@ class TerminalRenderer:
             style = parent_style + style
         if node.text.strip():
             self.console.print(Text(node.text, style=style), end="")
+    
+    def render_code(self, node: Node, indent: int):
+        """Render <pre><code> blocks or inline code."""
+        code_text = self.extract_text(node)
+        language = "text"
+    
+        # Detect language from class attribute (class="language-python")
+        class_attr = node.attrs.get("class") if hasattr(node, "attrs") else None
+        if class_attr:
+            if isinstance(class_attr, list):
+                for c in class_attr:
+                    if c.startswith("language-"):
+                        language = c.split("language-")[1]
+            elif isinstance(class_attr, str) and class_attr.startswith("language-"):
+                language = class_attr.split("language-")[1]
+    
+        # Inline <code> inside paragraph
+        if node.tag == "code" and (node.parent and node.parent.tag != "pre"):
+            highlighted = Syntax(code_text, language, theme="monokai", background_color="default", word_wrap=True)
+            self.console.print(highlighted, end="")
+            return
+    
+        # Block <pre><code>
+        self.console.print()  # line break before block
+        syntax = Syntax(code_text.strip("\n"), language, theme="monokai", background_color="default", word_wrap=True)
+        panel = Panel(syntax, border_style="cyan", expand=False)
+        self.console.print(panel)
+        self.console.print()
+	    
 
     def render_fallback(self, node: Node, indent: int, parent_style: Optional[Style] = None):
         # unknown tag: render its children normally
