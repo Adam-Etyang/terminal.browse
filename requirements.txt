@@ -7,4 +7,4 @@ playwright==1.55.0
 pytest==7.4.0
 greenlet>=3.0.3
 lxml==6.0
-tinycss==0.4
+tinycss2
