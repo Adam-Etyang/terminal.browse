@@ -1,5 +1,5 @@
 from typing import Dict, List, Tuple
-from HTMLParser import Node  
+from .HTMLParser import Node  
 
 
 class StyleResolver:
