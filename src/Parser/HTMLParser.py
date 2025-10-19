@@ -29,7 +29,7 @@ class HTMLParser:
 
         for child in element.children:
             if isinstance(child, NavigableString):
-                text = str(child).strip()
+                text = str(child)
                 if text:
                     node.children.append(Node(tag="_text", text=text, attrs={}))
             elif isinstance(child, Tag):
