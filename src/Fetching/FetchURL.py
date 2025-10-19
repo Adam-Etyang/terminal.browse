@@ -159,6 +159,10 @@ class StaticFetcher:
         html, status = cls.fetch(url)
         soup = BeautifulSoup(html, "lxml")
 
+        # Remove unwanted tags
+        for tag in soup.find_all(["script", "nav", "header", "footer", "aside"]):
+            tag.decompose()
+
         # Extract title
         title_tag = soup.find("title")
         title = title_tag.text if title_tag else url
@@ -169,6 +173,7 @@ class StaticFetcher:
         # 1. Inline <style> tags
         for style in soup.find_all("style"):
             css_bundle.append(style.text)
+            style.decompose()
 
         # 2. Linked stylesheets
         for link in soup.find_all("link", rel="stylesheet", href=True):
@@ -188,7 +193,7 @@ class StaticFetcher:
             css_bundle.append("\n".join(inline_styles))
 
         return PageResource(
-            html=html,
+            html=str(soup),
             css="\n".join(css_bundle),
             url=url,
             title=title,
@@ -321,32 +326,39 @@ class Fetcher:
     def fetch(self, url: str) -> PageResource:
         """Fetch page content"""
         logger.info(f"Fetching page content from {url} in mode: {self.mode}")
-        resource: Optional[PageResource] = None
         try:
-            if self.mode != "dynamic":
-                resource = StaticFetcher.fetch_with_css(url)
+            if self.mode == 'dynamic':
+                if self.dynamic_available:
+                    return DynamicFetcher.fetch_with_css(url)
+                else:
+                    logger.error("Dynamic fetching is not available.")
+                    # Should not happen due to check in __init__
+                    raise Exception("Dynamic fetching is not available.")
 
-            if resource and self._should_use_dynamic(resource.html):
+            # mode is 'static' or 'auto'
+            resource = StaticFetcher.fetch_with_css(url)
+
+            if self.mode == 'auto' and self.heuristics.looks_dynamic(resource.html):
                 logger.info("Page appears dynamic")
                 if self.prompt_for_dynamic:
-                    response = input(
-                        "\nThis page appears to require JavaScript. Fetch with dynamic renderer? (y/n): "
-                    )
-                    if response.lower() != "y":
-                        logger.info("\n User declined dynamic fetching")
-                        return resource
+                    try:
+                        response = input(
+                            "\nThis page appears to require JavaScript. Fetch with dynamic renderer? (y/n): "
+                        )
+                    except EOFError: # In case of non-interactive environment
+                        response = 'n'
 
-                    if self.dynamic_available:
-                        logger.info("Fetching page content with dynamic renderer")
-                        return DynamicFetcher.fetch_with_css(url)
-
-                return resource
-
-            return DynamicFetcher.fetch_with_css(url)
+                    if response.lower() == "y":
+                        if self.dynamic_available:
+                            logger.info("Fetching page content with dynamic renderer")
+                            return DynamicFetcher.fetch_with_css(url)
+                        else:
+                            logger.warning("Dynamic fetching requested but not available. Falling back to static.")
+            
+            return resource
 
         except Exception as e:
             logger.error(f"Error fetching page content: {e}")
-
             return PageResource(
                 html=f"<html><body><h1>Error fetching {url}</h1><p>{str(e)}</p></body></html>",
                 css="",
