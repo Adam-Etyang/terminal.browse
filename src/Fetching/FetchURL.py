@@ -25,6 +25,7 @@ logger = logging.getLogger("fetcher")
 # container for fetched page content and associeated resources
 @dataclass
 class PageResource:
+    """Container for fetched page content and associated resources."""
     html: str
     css: str
     url: str
@@ -34,6 +35,7 @@ class PageResource:
 
     @property
     def base_url(self) -> str:
+        """Returns the base URL of the page."""
         parsed = urlparse(self.url)
         return f"{parsed.scheme}: //{parsed.netloc}"
 
@@ -45,6 +47,7 @@ class PageResource:
 class HeuristicsEngine:
     @staticmethod
     def looks_dynamic(html: str) -> bool:
+        """Looks for indicators of dynamic rendering and SPA"""
         soup = BeautifulSoup(html, "lxml")
         body = soup.body
 
@@ -97,6 +100,7 @@ class HeuristicsEngine:
 class StaticFetcher:
     @staticmethod
     def fetch(url: str) -> tuple[str, int]:
+        """returns the HTML content and status code of a static page"""
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -110,6 +114,7 @@ class StaticFetcher:
 
     @staticmethod
     def fetch_css(base_url: str, css_url: str) -> str:
+        """returns the CSS content of a static page"""
         try:
             full_url = urljoin(base_url, css_url)
             response = requests.get(full_url, timeout=10)
@@ -118,7 +123,7 @@ class StaticFetcher:
 
             css_text = re.sub(
                 r'url\([\'"]?(?!http)([^\'")]+)[\'"]?\)',
-                lambda m: f"url({urljoin(full_url, m.group(1))})",
+                lambda m: f"url({urljoin(full_url, m.group(1))})",#returns the modified CSS text
                 css_text,
             )
             return css_text
@@ -193,7 +198,7 @@ class StaticFetcher:
 
     @staticmethod
     def _get_selector_for_element(tag) -> Optional[str]:
-        """Generate a simple CSS selector for an element (best effort)"""
+        """Generate a simple CSS selector for an element"""
         if tag.get("id"):
             return f"#{tag['id']}"
 
@@ -205,12 +210,14 @@ class StaticFetcher:
 
 
 class DynamicFetcher:
+    """Fetch a page using Playwright"""
     @classmethod
     def is_available(cls) -> bool:
         return PLAYWRIGHT_AVAILABLE
 
     @classmethod
     def fetch_with_css(cls, url: str) -> PageResource:
+        """Fetch a page's HTML and CSS content using Playwright"""
         if not cls.is_available():
             raise ImportError("Playwright is not installed")
 
@@ -312,6 +319,7 @@ class Fetcher:
         return self.heuristics.looks_dynamic(html)
 
     def fetch(self, url: str) -> PageResource:
+        """Fetch page content"""
         logger.info(f"Fetching page content from {url} in mode: {self.mode}")
         resource: Optional[PageResource] = None
         try:
