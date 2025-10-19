@@ -1,45 +1,31 @@
-#!/usr/bin/env python3
-from Parser import HTMLParser
-from TerminalRenderer import TerminalRenderer
+from .Parser.HTMLParser import HTMLParser
+from .Parser.CSSParser import CSSParser
+from .Parser.StyleResolver import StyleResolver
+from .Views.TerminalRenderer import TerminalRenderer
+from .Fetching.FetchURL import Fetcher
 
 
-class TerminalBrowser:
-    def __init__(self, width=80):
-        self.parser = HTMLParser()
-        self.renderer = TerminalRenderer(width)
-        self.current_url = None
-        self.history = []
+def browse(url: str):
+    # 1️⃣ Fetch HTML + CSS
+    fetcher = Fetcher(mode="auto", prompt_for_dynamic=False)
+    page = fetcher.fetch(url)
 
-    def navigate(self, url):
-        """Navigate to URL and render page"""
-        try:
-            print(f"Loading {url}...")
-            soup = self.parser.parse_url(url)
-            title = self.parser.get_title()
+    print(f"\n[+] Fetched: {page.url}  (status={page.status_code})")
+    if len(page.html) > 2000:
+        print(f"[i] HTML size: {len(page.html)} chars\n")
 
-            self.current_url = url
-            self.history.append(url)
+    # 2️⃣ Parse HTML and CSS
+    dom_tree = HTMLParser.parse_html(page.html)
+    css_rules = CSSParser.parse(page.css)
 
-            self.renderer.render_page(soup, title)
+    # 3️⃣ Apply styles
+    StyleResolver.apply_styles(dom_tree, css_rules)
 
-        except Exception as e:
-            print(f"Error loading page: {e}")
-
-    def render_html_string(self, html_string, title="Local HTML"):
-        """Render HTML from string"""
-        try:
-            soup = self.parser.parse_string(html_string)
-            self.renderer.render_page(soup, title)
-        except Exception as e:
-            print(f"Error rendering HTML: {e}")
+    # 4️⃣ Render the page to terminal
+    print("\n\n[+] Rendering page\n")
+    renderer = TerminalRenderer()
+    renderer.render(dom_tree)
 
 
-# Example usage
 if __name__ == "__main__":
-    browser = TerminalBrowser(width=100)
-    try:
-        url = str(input("Enter URL: "))
-        if url:
-            browser.navigate(url)
-    except Exception as e:
-        print(f"Error navigating: {e}")
+    browse("https://docs.python.org/3/")
