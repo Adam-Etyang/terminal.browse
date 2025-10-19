@@ -1,76 +1,118 @@
-from rich.console import Console
-from rich.style import Style
-from rich.text import Text
-
-from ..Parser.HTMLParser import HTMLParser
-from ..Parser.HTMLParser import Node
-
 from typing import Optional
+from rich.console import Console
+from rich.text import Text
+from rich.panel import Panel
+from rich.style import Style
+from ..Parser.HTMLParser import Node
 
 
 class TerminalRenderer:
-	
-	# default styles
-	TAG_STYLE_MAP = {
-  "h1": Style(bold=True, underline=True),
-  "h2": Style(bold=True),
-  "strong": Style(bold=True),
-  "b": Style(bold=True),
-  "em": Style(italic=True),
-  "i": Style(italic=True),
-	}
-	
-	def __init__(self):
-		self.console = Console(color_system="truecolor")
-	
-	def render(self, node:Node, indent:int = 0, parent_style: Optional[Style] = None) -> None:
-		"""Recursively render a node tree to the terminal"""
-		indent_str = " "*indent
-		style = self.resolve_rich_style(node)
 
-		if parent_style:
-			style = parent_style + style
+    BLOCK_TAGS = {"html", "body", "div", "p", "section", "article", "header", "footer"}
+    INLINE_TAGS = {"span", "a", "b", "strong", "i", "em", "u"}
+    HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    LIST_TAGS = {"ul", "ol", "li"}
+    TEXT_TAG = "_text"
 
-		if node.tag == "_text":
-			txt = Text(node.text,style=style)
-			self.console.print(indent_str,end="")
-			self.console.print(txt, end="")
-			return
-	   	# Pre & Post block linebreaks for block-level elements
-		if node.tag in ["p", "div", "body"]:
-			self.console.print()
-		
-		if node.text:
-			txt = Text(node.text, style=style)
-			self.console.print(indent_str, end="")
-			self.console.print(txt, end="")
-		
-		for child in node.children:
-			self.render(child, indent+1, parent_style=style)
-		
-		if node.tag in ["p", "div", "body"]:
-			self.console.print()
-		
-		
-	def resolve_rich_style(self, node:Node)->Optional[Style]:
-		"""Convert computed style into rich style object"""
-		computed = node.computed_style
-		tag_style = self.TAG_STYLE_MAP.get(node.tag) # Tag fall back to use defaults
-		
-		color = computed.get("color")
-		bold = self.is_true(computed.get("font-weight"),"bold")
-		italic = self.is_true(computed.get("font-style"),"italic")
-	
-		return Style(bold=bold or (tag_style.bold if tag_style else False),
-                italic=italic or (tag_style.italic if tag_style else False),
-                underline=(tag_style.underline if tag_style else False),
-                color=color)
-	@staticmethod
-	def is_true(prop_value,ref) -> bool:
-		"""Helper function for interpretung specific CSS styles"""
-		if prop_value is None:
-			return False
-		return str(prop_value).lower() == ref
-		
-		
-		
+    def __init__(self, force_color: bool = True):
+        self.console = Console(force_terminal=force_color, color_system="truecolor")
+        self.list_depth = 0
+
+    # ---------- Core renderer entry ----------
+    def render(self, node: Node, indent: int = 0, parent_style: Optional[Style] = None):
+        tag = node.tag.lower() if node.tag else "_text"
+
+        if tag in self.HEADING_TAGS:
+            self.render_heading(node, tag, indent, parent_style)
+        elif tag in self.BLOCK_TAGS:
+            self.render_block(node, indent, parent_style)
+        elif tag in self.LIST_TAGS:
+            self.render_list(node, tag, indent, parent_style)
+        elif tag in self.INLINE_TAGS:
+            self.render_inline(node, indent, parent_style)
+        elif tag == self.TEXT_TAG:
+            self.render_text(node, indent, parent_style)
+        else:
+            # default fallback
+            self.render_fallback(node, indent, parent_style)
+
+    # ---------- style conversion ----------
+    def to_rich_style(self, node: Node) -> Optional[Style]:
+        """Convert node.computed_style to Rich style."""
+        computed = node.computed_style or {}
+
+        color = computed.get("color")
+        bold = computed.get("font-weight") in {"bold", "700", "900"}
+        italic = computed.get("font-style") in {"italic"}
+        underline = computed.get("text-decoration") in {"underline", "underline solid"}
+
+        style = Style(color=color, bold=bold, italic=italic, underline=underline)
+
+        return style
+
+    # ---------- renderers for various tag types ----------
+    def render_heading(self, node: Node, tag: str, indent: int, parent_style: Optional[Style] = None):
+        level = int(tag[1]) if len(tag) > 1 and tag[1].isdigit() else 1
+        size_weight = max(7 - level, 1)  # larger number = smaller heading
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        text_content = self.extract_text(node)
+
+        t = Text(text_content.upper(), style=style)
+        self.console.print("\n" + "  " * indent, end="")
+        self.console.print(t, style=Style(bold=True))
+
+    def render_block(self, node: Node, indent: int, parent_style: Optional[Style] = None):
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        self.console.print()
+        for child in node.children:
+            self.render(child, indent + 1, parent_style=style)
+        self.console.print()
+
+    def render_list(self, node: Node, tag: str, indent: int, parent_style: Optional[Style] = None):
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        # handle <ul>, <ol>, <li>
+        if tag in {"ul", "ol"}:
+            self.list_depth += 1
+            for child in node.children:
+                self.render(child, indent + 1, parent_style=style)
+            self.list_depth -= 1
+        elif tag == "li":
+            bullet = "*" if self.list_depth == 0 else "-" * self.list_depth
+            text_content = self.extract_text(node)
+            self.console.print("  " * indent + f"[bold]{bullet}[/bold] ", end="")
+            self.console.print(Text(text_content, style=style))
+
+    def render_inline(self, node: Node, indent: int, parent_style: Optional[Style] = None):
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        for child in node.children:
+            self.render(child, indent, parent_style=style)
+
+    def render_text(self, node: Node, indent: int, parent_style: Optional[Style] = None):
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        if node.text.strip():
+            self.console.print(Text(node.text, style=style), end="")
+
+    def render_fallback(self, node: Node, indent: int, parent_style: Optional[Style] = None):
+        # unknown tag: render its children normally
+        for child in node.children:
+            self.render(child, indent, parent_style=parent_style)
+
+    # ---------- utils ----------
+    def extract_text(self, node: Node) -> str:
+        """Flatten all _text children recursively."""
+        if node.tag == "_text":
+            return node.text or ""
+        combined = []
+        for child in node.children:
+            combined.append(self.extract_text(child))
+        return "".join(combined)
