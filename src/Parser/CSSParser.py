@@ -30,17 +30,5 @@ class CSSParser:
 
         return rules
 
-if __name__ == "__main__":
-    css = """
-    body { background: black; color: white; }
-    h1.title { font-size: 24px; font-weight: bold }
-    #main { padding: 10px; }
-    """
-
-    parsed = CSSParser.parse(css)
-    for selector, props in parsed:
-        print(selector, "=>", props)
-                
-
 
 

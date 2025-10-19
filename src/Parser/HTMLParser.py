@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup, Tag, NavigableString
 
 @dataclass
 class Node:
+    """Represents a node in the HTML tree."""
     tag: str
     attrs: Dict[str, str]
     text: str = ""
@@ -42,28 +43,3 @@ class HTMLParser:
         root_elem = soup.find("html") or soup
         return HTMLParser.bs4_to_node(root_elem)
         
-        
-    
-"""  
-tests:
-    
-html_code = 
-<html>
-  <body>
-    <h1 class="hero">Hello</h1>
-    <p id="greeting">Welcome to <b>your</b> browser</p>
-  </body>
-</html>
-
-
-root = HTMLParser.parse_html(html_code)
-
-def print_tree(node: Node, depth=0):
-    indent = "  " * depth
-    print(f"{indent}{node.tag} -> text='{node.text}' attrs={node.attrs}")
-    for child in node.children:
-        print_tree(child, depth + 1)
-
-print_tree(root)
-
-"""
