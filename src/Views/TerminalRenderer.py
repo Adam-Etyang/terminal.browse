@@ -12,6 +12,19 @@ from ..Parser.HTMLParser import Node
 
 class TerminalRenderer:
 
+    DEFAULT_STYLES = {
+        "h1": Style(bold=True),
+        "h2": Style(bold=True),
+        "b": Style(bold=True),
+        "strong": Style(bold=True),
+        "i": Style(italic=True),
+        "em": Style(italic=True),
+        "u": Style(underline=True),
+        "a": Style(color="cyan", underline=True),
+        "code": Style(bgcolor="grey15"),
+        "pre": Style(bgcolor="grey15"),
+    }
+
     BLOCK_TAGS = {"html", "body", "div", "p", "section", "article", "header", "footer"}
     INLINE_TAGS = {"span", "a", "b", "strong", "i", "em", "u"}
     HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
@@ -25,7 +38,7 @@ class TerminalRenderer:
 
     # ---------- Core renderer entry ----------
     def render(self, node: Node, indent: int = 0, parent_style: Optional[Style] = None):
-        tag = node.tag.lower() if node.tag else "_text"
+        tag = node.tag.lower() if node.tag else "_text" 
 
         if tag in self.HEADING_TAGS:
             self.render_heading(node, tag, indent, parent_style)
@@ -46,16 +59,30 @@ class TerminalRenderer:
     # ---------- style conversion ----------
     def to_rich_style(self, node: Node) -> Optional[Style]:
         """Convert node.computed_style to Rich style."""
+        default_style = self.DEFAULT_STYLES.get(node.tag, Style())
+        
         computed = node.computed_style or {}
 
         color = computed.get("color")
+        if color:
+            if color.startswith("var("):
+                color = None # Ignore CSS variables
+            elif color.startswith("rgba("):
+                # Convert rgba(R, G, B, A) to rgb(R, G, B)
+                try:
+                    parts = color[5:-1].split(',') # "R, G, B, A"
+                    r, g, b = int(parts[0].strip()), int(parts[1].strip()), int(parts[2].strip())
+                    color = f"rgb({r},{g},{b})"
+                except (ValueError, IndexError):
+                    color = None # Invalid rgba format
+        
         bold = computed.get("font-weight") in {"bold", "700", "900"}
         italic = computed.get("font-style") in {"italic"}
         underline = computed.get("text-decoration") in {"underline", "underline solid"}
 
-        style = Style(color=color, bold=bold, italic=italic, underline=underline)
+        computed_style = Style(color=color, bold=bold, italic=italic, underline=underline)
 
-        return style
+        return default_style + computed_style
 
     # ---------- renderers for various tag types ----------
     def render_heading(self, node: Node, tag: str, indent: int, parent_style: Optional[Style] = None):
