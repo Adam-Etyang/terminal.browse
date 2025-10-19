@@ -11,6 +11,7 @@ class Node:
     text: str = ""
     children: List["Node"] = field(default_factory=list)
     computed_style: Dict[str, str] = field(default_factory=dict)
+    parent: Optional["Node"] = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         child_tags = [child.tag for child in self.children]
@@ -23,17 +24,17 @@ class HTMLParser:
     """Convert raw HTML into a tree of Node objects."""
 
     @staticmethod
-    def bs4_to_node(element: Tag) -> Node:
+    def bs4_to_node(element: Tag,parent:Optional[Node]=None) -> Node:
         """Recursively convert BeautifulSoup Tag into Node."""
-        node = Node(tag=element.name or "text", attrs=element.attrs)
+        node = Node(tag=element.name or "text", attrs=element.attrs,parent=parent)
 
         for child in element.children:
             if isinstance(child, NavigableString):
                 text = str(child)
                 if text:
-                    node.children.append(Node(tag="_text", text=text, attrs={}))
+                    node.children.append(Node(tag="_text", text=text, attrs={},parent=node))
             elif isinstance(child, Tag):
-                node.children.append(HTMLParser.bs4_to_node(child))
+                node.children.append(HTMLParser.bs4_to_node(child,node))
         return node
 
     @staticmethod
