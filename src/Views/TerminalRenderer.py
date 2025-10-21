@@ -1,5 +1,7 @@
 from typing import Optional
 
+import unicodedata
+
 from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
@@ -35,10 +37,13 @@ class TerminalRenderer:
     def __init__(self, force_color: bool = True):
         self.console = Console(force_terminal=force_color, color_system="truecolor")
         self.list_depth = 0
-
+    
+    
     # ---------- Core renderer entry ----------
     def render(self, node: Node, indent: int = 0, parent_style: Optional[Style] = None):
         tag = node.tag.lower() if node.tag else "_text" 
+        if node.tag  in ["head", "script", "style"]:
+            return
 
         if tag in self.HEADING_TAGS:
             self.render_heading(node, tag, indent, parent_style)
@@ -65,8 +70,12 @@ class TerminalRenderer:
 
         color = computed.get("color")
         if color:
-            if color.startswith("var("):
+            if color.startswith("#") and len(color) == 4:
+                color = f"#{color[1]*2}{color[2]*2}{color[3]*2}"
+            elif color.startswith("var("):
                 color = None # Ignore CSS variables
+            elif color == "inherit":
+                color = None # Handled by parent_style
             elif color.startswith("rgba("):
                 # Convert rgba(R, G, B, A) to rgb(R, G, B)
                 try:
