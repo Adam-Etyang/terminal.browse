@@ -38,4 +38,12 @@ def browse(url: str):
 
 
 if __name__ == "__main__":
-	browse("https://www.wikipedia.org/")
+    """
+    import argparse
+    parser = argparse.ArgumentParser(description="Terminal Browser")
+    parser.add_argument("url", type=str, help="The URL to browse")
+    args = parser.parse_args()
+    """
+    
+    url = str(input("Enter URL: "))
+    browse(url)

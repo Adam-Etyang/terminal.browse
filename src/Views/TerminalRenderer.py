@@ -45,6 +45,8 @@ class TerminalRenderer:
         if node.tag  in ["head", "script", "style"]:
             return
 
+        is_block = tag in self.BLOCK_TAGS or tag in self.HEADING_TAGS or tag in self.LIST_TAGS or tag == "pre"
+
         if tag in self.HEADING_TAGS:
             self.render_heading(node, tag, indent, parent_style)
         elif tag in self.BLOCK_TAGS:
@@ -60,6 +62,9 @@ class TerminalRenderer:
         else:
             # default fallback
             self.render_fallback(node, indent, parent_style)
+        
+        if is_block:
+            self.console.print()
 
     # ---------- style conversion ----------
     def to_rich_style(self, node: Node) -> Optional[Style]:
@@ -76,6 +81,8 @@ class TerminalRenderer:
                 color = None # Ignore CSS variables
             elif color == "inherit":
                 color = None # Handled by parent_style
+            elif color == "transparent":
+                color = None # Ignore transparent color
             elif color.startswith("rgba("):
                 # Convert rgba(R, G, B, A) to rgb(R, G, B)
                 try:
@@ -103,17 +110,14 @@ class TerminalRenderer:
         text_content = self.extract_text(node)
 
         t = Text(text_content.upper(), style=style)
-        self.console.print("\n" + "  " * indent, end="")
         self.console.print(t, style=Style(bold=True))
 
     def render_block(self, node: Node, indent: int, parent_style: Optional[Style] = None):
         style = self.to_rich_style(node)
         if parent_style:
             style = parent_style + style
-        self.console.print()
         for child in node.children:
             self.render(child, indent + 1, parent_style=style)
-        self.console.print()
 
     def render_list(self, node: Node, tag: str, indent: int, parent_style: Optional[Style] = None):
         style = self.to_rich_style(node)
@@ -126,10 +130,10 @@ class TerminalRenderer:
                 self.render(child, indent + 1, parent_style=style)
             self.list_depth -= 1
         elif tag == "li":
-            bullet = "*" if self.list_depth == 0 else "-" * self.list_depth
-            text_content = self.extract_text(node)
+            bullet = "*" if self.list_depth <= 1 else "-" * (self.list_depth -1)
             self.console.print("  " * indent + f"[bold]{bullet}[/bold] ", end="")
-            self.console.print(Text(text_content, style=style))
+            for child in node.children:
+                self.render(child, indent, parent_style=style)
 
     def render_inline(self, node: Node, indent: int, parent_style: Optional[Style] = None):
         style = self.to_rich_style(node)
@@ -142,8 +146,7 @@ class TerminalRenderer:
         style = self.to_rich_style(node)
         if parent_style:
             style = parent_style + style
-        if node.text.strip():
-            self.console.print(Text(node.text, style=style), end="")
+        self.console.print(Text(node.text, style=style), end="")
     
     def render_code(self, node: Node, indent: int):
         """Render <pre><code> blocks or inline code."""
