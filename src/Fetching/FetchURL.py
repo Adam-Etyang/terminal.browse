@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from urllib.parse import urlparse, urljoin
 import logging
 import lxml
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Set
 import re
+import time
+from urllib.robotparser import RobotFileParser
 
 try:
     from playwright.sync_api import sync_playwright
@@ -30,7 +32,7 @@ logger = logging.getLogger("fetcher")
 class PageResource:
     """Container for fetched page content and associated resources."""
     html: str
-    css: str
+    css: dict  # {source: content} - sources: "inline", "external", "dynamic"
     url: str
     title: Optional[str] = None
     status_code: int = 200  # might change this later in the case of an unsuccessful request or falsey data
@@ -102,6 +104,17 @@ class HeuristicsEngine:
 
 class StaticFetcher:
     _session = None
+    _last_request_time = 0
+    _fetched_css_urls: Set[str] = set()  # Track fetched URLs for deduplication
+    
+    def __init__(self, rate_limit_delay: float = 0.5):
+        """
+        Initialize StaticFetcher with rate limiting.
+        
+        Args:
+            rate_limit_delay: Minimum seconds to wait between requests
+        """
+        self.rate_limit_delay = rate_limit_delay
     
     @classmethod
     def _get_session(cls) -> requests.Session:
@@ -125,9 +138,24 @@ class StaticFetcher:
         return cls._session
     
     @classmethod
-    def fetch(cls, url: str) -> tuple[str, int]:
+    def _apply_rate_limit(cls, delay: float):
+        """Apply rate limiting by sleeping if needed"""
+        elapsed = time.time() - cls._last_request_time
+        if elapsed < delay:
+            time.sleep(delay - elapsed)
+        cls._last_request_time = time.time()
+    
+    @classmethod
+    def _reset_deduplication(cls):
+        """Reset deduplication set (call this for new pages)"""
+        cls._fetched_css_urls.clear()
+    
+    @classmethod
+    def fetch(cls, url: str, rate_limit_delay: float = 0.5) -> tuple[str, int]:
         """returns the HTML content and status code of a static page"""
         try:
+            cls._apply_rate_limit(rate_limit_delay)
+            
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
@@ -140,13 +168,24 @@ class StaticFetcher:
             raise
 
     @classmethod
-    def fetch_css(cls, base_url: str, css_url: str) -> str:
-        """Fetch a CSS file, resolving relative URLs"""
+    def fetch_css(cls, base_url: str, css_url: str, rate_limit_delay: float = 0.5) -> str:
+        """Fetch a CSS file, resolving relative URLs with deduplication"""
         try:
             full_url = urljoin(base_url, css_url)
+            
+            # Deduplication: skip if already fetched
+            if full_url in cls._fetched_css_urls:
+                logger.debug(f"CSS already fetched, skipping: {full_url}")
+                return ""
+            
+            cls._apply_rate_limit(rate_limit_delay)
+            
             session = cls._get_session()
             response = session.get(full_url, timeout=10)
             response.raise_for_status()
+
+            # Mark as fetched
+            cls._fetched_css_urls.add(full_url)
 
             # Convert url(relative) to url(absolute)
             css_text = response.text
@@ -162,9 +201,12 @@ class StaticFetcher:
             return ""  # Return empty string on failure
 
     @classmethod
-    def fetch_with_css(cls, url: str) -> PageResource:
-        """Fetch HTML and all associated CSS"""
-        html, status = cls.fetch(url)
+    def fetch_with_css(cls, url: str, rate_limit_delay: float = 0.5) -> PageResource:
+        """Fetch HTML and all associated CSS with rate limiting and deduplication"""
+        # Reset deduplication for this page
+        cls._reset_deduplication()
+        
+        html, status = cls.fetch(url, rate_limit_delay=rate_limit_delay)
         soup = BeautifulSoup(html, "lxml")
 
         # Remove unwanted tags
@@ -175,34 +217,37 @@ class StaticFetcher:
         title_tag = soup.find("title")
         title = title_tag.text if title_tag else url
 
-        # Collect all CSS
-        css_bundle = []
+        # Collect all CSS with metadata
+        css_data = {
+            "inline": [],      # <style> tags
+            "external": {},    # linked stylesheets {url: content}
+            "attribute": []    # inline style attributes
+        }
 
         # 1. Inline <style> tags
         for style in soup.find_all("style"):
-            css_bundle.append(style.text)
+            css_data["inline"].append(style.text)
             style.decompose()
 
-        # 2. Linked stylesheets
+        # 2. Linked stylesheets (with deduplication)
         for link in soup.find_all("link", rel="stylesheet", href=True):
             css_url = link["href"]
-            css_content = cls.fetch_css(url, css_url)
+            css_content = cls.fetch_css(url, css_url, rate_limit_delay=rate_limit_delay)
             if css_content:
-                css_bundle.append(css_content)
+                css_data["external"][css_url] = css_content
 
         # 3. Collect inline styles (for reference)
-        inline_styles = []
         for tag in soup.find_all(attrs={"style": True}):
             selector = cls._get_selector_for_element(tag)
             if selector:
-                inline_styles.append(f"{selector} {{ {tag['style']} }}")
-
-        if inline_styles:
-            css_bundle.append("\n".join(inline_styles))
+                css_data["attribute"].append({
+                    "selector": selector,
+                    "style": tag['style']
+                })
 
         return PageResource(
             html=str(soup),
-            css="\n".join(css_bundle),
+            css=css_data,
             url=url,
             title=title,
             status_code=status,
@@ -252,16 +297,19 @@ class DynamicFetcher:
                 html = page.content()
 
                 # Extract all CSS
-                css_bundle = page.evaluate("""
+                css_result = page.evaluate("""
                     () => {
                         // Collect all stylesheet content
                         const sheets = Array.from(document.styleSheets);
                         const cssTexts = [];
+                        const externalSheets = {};
 
                         for (const sheet of sheets) {
                             try {
                                 const rules = Array.from(sheet.cssRules);
-                                cssTexts.push(rules.map(r => r.cssText).join("\\n"));
+                                const sheetUrl = sheet.href || "dynamic";
+                                const cssText = rules.map(r => r.cssText).join("\\n");
+                                externalSheets[sheetUrl] = cssText;
                             } catch (e) {
                                 // CORS error for external stylesheets
                                 console.warn("Could not access stylesheet rules:", e);
@@ -283,19 +331,28 @@ class DynamicFetcher:
                                 selector = el.tagName.toLowerCase();
                             }
 
-                            inlineStyles.push(`${selector} { ${el.style.cssText} }`);
+                            inlineStyles.push({
+                                selector: selector,
+                                style: el.style.cssText
+                            });
                         }
 
-                        if (inlineStyles.length > 0) {
-                            cssTexts.push(inlineStyles.join("\\n"));
-                        }
-
-                        return cssTexts.join("\\n");
+                        return {
+                            external: externalSheets,
+                            attribute: inlineStyles
+                        };
                     }
                 """)
+                
+                css_data = {
+                    "inline": [],
+                    "external": css_result.get("external", {}),
+                    "attribute": css_result.get("attribute", [])
+                }
+                
                 return PageResource(
                     html=html,
-                    css=css_bundle,
+                    css=css_data,
                     url=url,
                     title=title,
                     status_code=status_code,
@@ -310,9 +367,18 @@ class DynamicFetcher:
 
 # main fetcher that combines static and dynamic apporaches
 class Fetcher:
-    def __init__(self, mode="auto", prompt_for_dynamic=True) -> None:
+    def __init__(self, mode="auto", prompt_for_dynamic=True, rate_limit_delay: float = 0.5) -> None:
+        """
+        Initialize Fetcher.
+        
+        Args:
+            mode: "static", "dynamic", or "auto"
+            prompt_for_dynamic: Whether to prompt user if dynamic rendering needed
+            rate_limit_delay: Minimum seconds between requests (prevents being blocked)
+        """
         self.mode = mode
         self.prompt_for_dynamic = prompt_for_dynamic
+        self.rate_limit_delay = rate_limit_delay
         self.heuristics = HeuristicsEngine()
 
         self.dynamic_available = DynamicFetcher.is_available()
@@ -332,8 +398,8 @@ class Fetcher:
         return self.heuristics.looks_dynamic(html)
 
     def fetch(self, url: str) -> PageResource:
-        """Fetch page content"""
-        logger.info(f"Fetching page content from {url} in mode: {self.mode}")
+        """Fetch page content with rate limiting and deduplication"""
+        logger.info(f"Fetching page content from {url} in mode: {self.mode} (rate limit: {self.rate_limit_delay}s)")
         try:
             if self.mode == 'dynamic':
                 if self.dynamic_available:
@@ -344,7 +410,7 @@ class Fetcher:
                     raise Exception("Dynamic fetching is not available.")
 
             # mode is 'static' or 'auto'
-            resource = StaticFetcher.fetch_with_css(url)
+            resource = StaticFetcher.fetch_with_css(url, rate_limit_delay=self.rate_limit_delay)
 
             if self.mode == 'auto' and self.heuristics.looks_dynamic(resource.html):
                 logger.info("Page appears dynamic")
@@ -369,7 +435,7 @@ class Fetcher:
             logger.error(f"Error fetching page content: {e}")
             return PageResource(
                 html=f"<html><body><h1>Error fetching {url}</h1><p>{str(e)}</p></body></html>",
-                css="",
+                css={"inline": [], "external": {}, "attribute": []},
                 url=url,
                 status_code=500,
                 is_dynamic_render=False,
