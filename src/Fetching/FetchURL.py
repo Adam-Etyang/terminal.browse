@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from urllib.parse import urlparse, urljoin
@@ -98,50 +101,55 @@ class HeuristicsEngine:
 
 
 class StaticFetcher:
-    @staticmethod
-    def fetch(url: str) -> tuple[str, int]:
+    _session = None
+    
+    @classmethod
+    def _get_session(cls) -> requests.Session:
+        """Create or return a requests session with retry logic"""
+        if cls._session is None:
+            cls._session = requests.Session()
+            
+            # Define retry strategy
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1,  # 1s, 2s, 4s delays
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["GET", "HEAD"]
+            )
+            
+            # Mount adapter with retry strategy to both http and https
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            cls._session.mount("http://", adapter)
+            cls._session.mount("https://", adapter)
+        
+        return cls._session
+    
+    @classmethod
+    def fetch(cls, url: str) -> tuple[str, int]:
         """returns the HTML content and status code of a static page"""
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
-            response = requests.get(url, headers=headers)
+            session = cls._get_session()
+            response = session.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             return response.text, response.status_code
         except Exception as e:
             logger.error(f"Error fetching static content: {e}")
             raise
 
-    @staticmethod
-    def fetch_css(base_url: str, css_url: str) -> str:
-        """returns the CSS content of a static page"""
-        try:
-            full_url = urljoin(base_url, css_url)
-            response = requests.get(full_url, timeout=10)
-            response.raise_for_status()
-            css_text = response.text
-
-            css_text = re.sub(
-                r'url\([\'"]?(?!http)([^\'")]+)[\'"]?\)',
-                lambda m: f"url({urljoin(full_url, m.group(1))})",#returns the modified CSS text
-                css_text,
-            )
-            return css_text
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching CSS content: {e}")
-            return ""
-
-    @staticmethod
-    def fetch_css(base_url: str, css_url: str) -> str:
+    @classmethod
+    def fetch_css(cls, base_url: str, css_url: str) -> str:
         """Fetch a CSS file, resolving relative URLs"""
         try:
             full_url = urljoin(base_url, css_url)
-            response = requests.get(full_url, timeout=5)
+            session = cls._get_session()
+            response = session.get(full_url, timeout=10)
             response.raise_for_status()
 
-            # Quick fix for relative URLs in CSS
-            css_text = response.text
             # Convert url(relative) to url(absolute)
+            css_text = response.text
             css_text = re.sub(
                 r'url\([\'"]?(?!http)([^\'")]+)[\'"]?\)',
                 lambda m: f"url({urljoin(full_url, m.group(1))})",

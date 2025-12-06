@@ -31,6 +31,7 @@ class TerminalRenderer:
     INLINE_TAGS = {"span", "a", "b", "strong", "i", "em", "u"}
     HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
     LIST_TAGS = {"ul", "ol", "li"}
+    FORM_TAGS = {"input", "button", "textarea", "select", "label", "form"}
     TEXT_TAG = "_text"
     
 
@@ -55,6 +56,8 @@ class TerminalRenderer:
             self.render_list(node, tag, indent, parent_style)
         elif tag in self.INLINE_TAGS:
             self.render_inline(node, indent, parent_style)
+        elif tag in self.FORM_TAGS:
+            self.render_form_element(node, indent, parent_style)
         elif tag == "pre" or tag == "code":
             self.render_code(node, indent)
         elif tag == self.TEXT_TAG:
@@ -147,6 +150,48 @@ class TerminalRenderer:
         if parent_style:
             style = parent_style + style
         self.console.print(Text(node.text, style=style), end="")
+    
+    def render_form_element(self, node: Node, indent: int, parent_style: Optional[Style] = None):
+        """Render form elements like input, button, textarea, select."""
+        tag = node.tag.lower()
+        attrs = node.attrs if hasattr(node, "attrs") else {}
+        style = self.to_rich_style(node)
+        if parent_style:
+            style = parent_style + style
+        
+        if tag == "input":
+            input_type = attrs.get("type", "text").lower()
+            placeholder = attrs.get("placeholder", "")
+            value = attrs.get("value", "")
+            name = attrs.get("name", "")
+            
+            # Display input field representation
+            display_text = value or placeholder or f"[{input_type} input]"
+            text_obj = Text(f"[{display_text}]", style=Style(bgcolor="grey11", color="white"))
+            self.console.print(text_obj, end=" ")
+            
+        elif tag == "button":
+            button_text = self.extract_text(node) or "Button"
+            text_obj = Text(f"[ {button_text} ]", style=Style(bgcolor="blue", color="white", bold=True))
+            self.console.print(text_obj, end=" ")
+            
+        elif tag == "textarea":
+            placeholder = attrs.get("placeholder", "[textarea]")
+            text_obj = Text(f"[{placeholder}]", style=Style(bgcolor="grey11", color="white"))
+            self.console.print(text_obj, end=" ")
+            
+        elif tag == "select":
+            text_obj = Text("[dropdown]", style=Style(bgcolor="grey11", color="white"))
+            self.console.print(text_obj, end=" ")
+            
+        elif tag == "label":
+            label_text = self.extract_text(node)
+            text_obj = Text(label_text, style=Style(bold=True))
+            self.console.print(text_obj, end=" ")
+            
+        elif tag == "form":
+            for child in node.children:
+                self.render(child, indent, parent_style=style)
     
     def render_code(self, node: Node, indent: int):
         """Render <pre><code> blocks or inline code."""
